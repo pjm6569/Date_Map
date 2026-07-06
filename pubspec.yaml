@@ -1,0 +1,22 @@
+name: date_map
+description: 식당 중심의 맞춤형 데이트 코스 추천 앱 (MVP)
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+  flutter: ">=3.19.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.2                 # LLM REST 호출 (OpenAI / Gemini / Custom)
+  url_launcher: ^6.3.0         # 네이버 지도 아웃링크
+  flutter_naver_map: ^1.3.0    # 네이버 네이티브 지도 위젯
+  shared_preferences: ^2.3.2   # AI 공급자/키 설정 저장
+
+dev_dependencies:
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
