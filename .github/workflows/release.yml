@@ -22,11 +22,25 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+          cache: gradle # ~/.gradle 캐시 (의존성/래퍼)
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          cache: true # Flutter SDK + pub 캐시
+
+      # Gradle 빌드 캐시 (프로젝트 .gradle, 빌드 산출물 일부)
+      - name: Cache Gradle build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            android/.gradle
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
 
       # secrets.dart 는 git 에 없으므로 GitHub Secrets 로 생성.
       - name: Create secrets.dart
@@ -53,7 +67,9 @@ jobs:
           SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
-        run: flutter build apk --release
+        # arm64 만 빌드 → 요즘 폰 대부분 커버, 빌드 빠르고 APK 작아짐.
+        # (구형 32비트 기기 지원 필요하면 --target-platform 줄을 지울 것)
+        run: flutter build apk --release --target-platform android-arm64
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
