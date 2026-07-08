@@ -1,7 +1,7 @@
 name: date_map
 description: 식당 중심의 맞춤형 데이트 코스 추천 앱 (MVP)
 publish_to: "none"
-version: 0.2.0
+version: 0.2.1+1
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
