@@ -85,12 +85,14 @@ String _queryUser(SearchRequest req, int numQueries) {
 // ── 2단계: 실존 후보 중 선별·정렬·추천이유 작성 ──
 String _selectSystem(int count) => '''
 너는 대한민국 맛집 큐레이터다. 아래 "후보 목록"은 네이버 지역검색으로 찾은 실제 존재하는 가게들이다.
-이 후보들 중에서만 골라 사용자 조건에 가장 잘 맞는 식당 최대 $count곳을 추천한다.
+이 후보들 중에서만 골라 사용자 조건에 가장 잘 맞는 식당을 정확히 $count곳 추천한다.
 
 절대 규칙:
 - 후보 목록에 없는 가게를 새로 만들어내지 마라. 반드시 후보 안에서만 고른다.
 - 후보의 name(상호)과 index 는 그대로 사용한다. 좌표/주소는 시스템이 채우므로 신경쓰지 마라.
-- 조건에 맞는 곳이 부족하면 적게 반환해도 된다.
+- 반드시 $count곳을 채워서 추천한다. 조건에 딱 맞는 곳이 부족하면, 조건에 가장 가까운 후보로 $count곳을 채운다.
+  (후보 수가 $count곳보다 적을 때만 예외로 더 적게 반환한다.)
+- 조건 부합도가 높은 순으로 정렬한다(가장 잘 맞는 곳이 맨 위).
 - menu 는 그 가게의 대표 메뉴(추정 가능하면), price 는 1인 예상 가격대, reason 은 이 조건에 왜 맞는지 한 문장.
 - 반드시 아래 JSON 스키마만 출력. 순수 JSON 만.
 
@@ -191,8 +193,10 @@ abstract class LlmClient {
     SearchRequest req, {
     required NaverSearchService naverSearch,
   }) async {
-    // 목표 개수에 맞춰 검색어 수 결정 (검색어당 여러 곳 → 넉넉히).
-    final numQueries = (req.count / 3).ceil().clamp(3, 8);
+    // 목표 개수에 맞춰 검색어 수 결정.
+    // 선별 단계에서 딱 맞게 고를 수 있도록 후보 풀을 넉넉히 확보한다
+    // (검색어당 여러 곳 수집 + 중복 제거로 실제 후보는 줄어들기 때문).
+    final numQueries = (req.count / 2).ceil().clamp(4, 10);
 
     // 1) 검색어 생성
     List<String> queries;
@@ -215,8 +219,8 @@ abstract class LlmClient {
       if (queries.isEmpty) queries = ['${req.location} 맛집'];
     }
 
-    // 2) 네이버 지역검색으로 실존 후보 수집
-    final candidates = await naverSearch.searchMany(queries, displayEach: 20);
+    // 2) 네이버 지역검색으로 실존 후보 수집 (검색어당 넉넉히 → 선별 여지 확보)
+    final candidates = await naverSearch.searchMany(queries, displayEach: 30);
     if (candidates.isEmpty) {
       throw const LlmException('조건에 맞는 실제 가게를 찾지 못했어요. 지역/조건을 바꿔보세요.');
     }

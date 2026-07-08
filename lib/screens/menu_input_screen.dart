@@ -70,7 +70,9 @@ class _MenuInputScreenState extends State<MenuInputScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('오늘 뭐 먹지?')),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        // 하단은 시스템 내비게이션 바(제스처 영역)만큼 여백을 더해 버튼이 가리지 않게.
+        padding: EdgeInsets.fromLTRB(
+            20, 20, 20, 20 + MediaQuery.of(context).viewPadding.bottom),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
