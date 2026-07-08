@@ -52,5 +52,14 @@
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="https"/>
         </intent>
+        <!-- 웹뷰 안 "앱 열기/길찾기" 커스텀 스킴을 외부 앱으로 넘길 수 있도록 -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="nmap"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="market"/>
+        </intent>
     </queries>
 </manifest>

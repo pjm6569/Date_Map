@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../app_state.dart';
 import '../services/update_service.dart';
@@ -21,8 +22,20 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // 앱 시작 시 조용히 업데이트 확인.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkUpdate());
+    // 앱 시작 시: 위치 권한 요청 후 조용히 업데이트 확인.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _requestLocationPermission();
+      _checkUpdate();
+    });
+  }
+
+  /// 앱 시작 시 위치 권한을 1회 요청한다.
+  /// 이미 허용/영구 거부된 경우 시스템이 다이얼로그를 띄우지 않으므로 그대로 둔다.
+  Future<void> _requestLocationPermission() async {
+    final status = await Permission.locationWhenInUse.status;
+    if (status.isDenied) {
+      await Permission.locationWhenInUse.request();
+    }
   }
 
   @override

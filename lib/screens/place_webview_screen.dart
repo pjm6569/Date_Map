@@ -13,6 +13,23 @@ final Set<Factory<OneSequenceGestureRecognizer>> _webviewGestures = {
 String naverPlaceUrl(String query) =>
     'https://m.map.naver.com/search2/search.naver?query=${Uri.encodeComponent(query)}';
 
+/// 웹뷰가 처리 못하는 커스텀 스킴(앱 열기·길찾기 등)을 외부 앱으로 넘긴다.
+/// http/https 는 웹뷰가 그대로 로드하고, 그 외(nmap://, intent://, market:// 등)는
+/// 외부 앱으로 실행 후 웹뷰 이동을 막아 에러 페이지가 뜨지 않게 한다.
+NavigationDecision _handleNavigation(NavigationRequest request) {
+  final uri = Uri.tryParse(request.url);
+  final scheme = uri?.scheme.toLowerCase();
+  if (scheme == 'http' || scheme == 'https') {
+    return NavigationDecision.navigate;
+  }
+  if (uri != null) {
+    // 외부 앱으로 열기 (실패해도 웹뷰 에러 페이지는 피한다).
+    launchUrl(uri, mode: LaunchMode.externalApplication)
+        .catchError((_) => false);
+  }
+  return NavigationDecision.prevent;
+}
+
 /// 하단 바텀시트 안에서 쓰는 인라인 WebView (화면 이동 없이 상세 표시).
 class PlaceDetailSheet extends StatefulWidget {
   const PlaceDetailSheet({super.key, required this.query});
@@ -33,6 +50,7 @@ class _PlaceDetailSheetState extends State<PlaceDetailSheet> {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(NavigationDelegate(
+        onNavigationRequest: _handleNavigation,
         onPageStarted: (_) {
           if (mounted) setState(() => _loading = true);
         },
@@ -134,6 +152,7 @@ class _PlaceWebViewScreenState extends State<PlaceWebViewScreen> {
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
         NavigationDelegate(
+          onNavigationRequest: _handleNavigation,
           onPageStarted: (_) {
             if (mounted) setState(() => _loading = true);
           },
