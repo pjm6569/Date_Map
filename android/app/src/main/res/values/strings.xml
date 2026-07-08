@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 홈 화면에 표시되는 앱 이름 (패키지명 applicationId 와 무관) -->
+    <string name="app_name">뭐먹지</string>
+</resources>

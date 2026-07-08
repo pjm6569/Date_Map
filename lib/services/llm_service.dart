@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../models/ai_settings.dart';
 import '../models/menu.dart';
 import '../models/restaurant.dart';
+import 'naver_search_service.dart';
 
 /// 맛집 찾기 조건.
 class SearchRequest {
@@ -53,27 +54,58 @@ class LlmException implements Exception {
 
 // ── 프롬프트 (공급자 공통) ──────────────────────────────────────
 
-String _searchSystem(int count) => '''
-너는 대한민국 맛집 큐레이터다. 사용자 조건에 맞는 실존 식당 $count곳을 추천한다.
+// ── 1단계: 네이버 지역검색용 검색어 생성 ──
+String _querySystem(int numQueries) => '''
+너는 네이버 지역검색에 넣을 "검색어"를 만드는 도우미다.
+사용자 조건에 맞는 식당을 찾기 위한 네이버 검색어 $numQueries개를 만든다.
 
 규칙:
-- 반드시 $count곳을 채운다. 조건에 딱 맞는 곳이 부족하면 가장 근접한 곳으로 채운다.
-- lat, lng 는 네이버 지도 기준 실제 위경도(WGS84, 소수점 6자리)로 채운다.
-- price 는 1인 기준 예상 가격대를 한국어로 (예: "1인 3만원대").
-- 실존 장소명을 사용한다.
-- 반드시 아래 JSON 스키마만 출력한다. 설명/마크다운/코드블록 없이 순수 JSON 만.
+- 각 검색어는 "지역 + 음식종류/키워드 + 맛집" 형태로 실제 네이버에서 잘 검색되게 만든다.
+  (예: "성수동 파스타 맛집", "성수동 데이트 한식", "성수동 분위기 좋은 이자카야")
+- 음식종류가 여러 개면 종류별로 나눠서 검색어를 만든다.
+- 서로 다른 각도로 다양하게. 반드시 아래 JSON 스키마만 출력. 순수 JSON 만.
+
+JSON 스키마:
+{ "queries": ["검색어1", "검색어2"] }
+''';
+
+String _queryUser(SearchRequest req, int numQueries) {
+  final b = StringBuffer();
+  b.writeln('지역: ${req.location}');
+  b.writeln('1인 예산: ${_won(req.minBudget)} ~ ${_won(req.maxBudget)}');
+  if (req.moods.isNotEmpty) b.writeln('분위기: ${req.moods.join(", ")}');
+  if (req.cuisines.isNotEmpty) b.writeln('음식 종류: ${req.cuisines.join(", ")}');
+  if (req.extraPrompt.trim().isNotEmpty) {
+    b.writeln('추가 요청: ${req.extraPrompt.trim()}');
+  }
+  b.writeln('\n위 조건으로 네이버 검색어 $numQueries개를 JSON 으로 만들어줘.');
+  return b.toString();
+}
+
+// ── 2단계: 실존 후보 중 선별·정렬·추천이유 작성 ──
+String _selectSystem(int count) => '''
+너는 대한민국 맛집 큐레이터다. 아래 "후보 목록"은 네이버 지역검색으로 찾은 실제 존재하는 가게들이다.
+이 후보들 중에서만 골라 사용자 조건에 가장 잘 맞는 식당 최대 $count곳을 추천한다.
+
+절대 규칙:
+- 후보 목록에 없는 가게를 새로 만들어내지 마라. 반드시 후보 안에서만 고른다.
+- 후보의 name(상호)과 index 는 그대로 사용한다. 좌표/주소는 시스템이 채우므로 신경쓰지 마라.
+- 조건에 맞는 곳이 부족하면 적게 반환해도 된다.
+- menu 는 그 가게의 대표 메뉴(추정 가능하면), price 는 1인 예상 가격대, reason 은 이 조건에 왜 맞는지 한 문장.
+- 반드시 아래 JSON 스키마만 출력. 순수 JSON 만.
 
 JSON 스키마:
 {
-  "restaurants": [
-    { "name": "식당명", "lat": 37.5665, "lng": 126.9780, "menu": "대표메뉴", "price": "1인 3만원대", "reason": "추천 이유" }
+  "picks": [
+    { "index": 0, "menu": "대표메뉴", "price": "1인 3만원대", "reason": "추천 이유" }
   ]
 }
 ''';
 
-String _searchUser(SearchRequest req) {
+String _selectUser(SearchRequest req, List<Restaurant> candidates) {
   final b = StringBuffer();
-  b.writeln('위치: ${req.location}');
+  b.writeln('[사용자 조건]');
+  b.writeln('지역: ${req.location}');
   b.writeln('1인 예산: ${_won(req.minBudget)} ~ ${_won(req.maxBudget)}');
   b.writeln(req.moods.isEmpty ? '분위기: 상관없음' : '분위기: ${req.moods.join(", ")}');
   b.writeln(req.cuisines.isEmpty
@@ -82,7 +114,12 @@ String _searchUser(SearchRequest req) {
   if (req.extraPrompt.trim().isNotEmpty) {
     b.writeln('추가 요청: ${req.extraPrompt.trim()}');
   }
-  b.writeln('\n위 조건에 맞는 식당 ${req.count}곳을 JSON 으로 추천해줘.');
+  b.writeln('\n[후보 목록] (index: 상호 | 분류 | 주소)');
+  for (var i = 0; i < candidates.length; i++) {
+    final c = candidates[i];
+    b.writeln('$i: ${c.name} | ${c.menu} | ${c.reason}');
+  }
+  b.writeln('\n위 후보 중에서 조건에 맞는 곳을 최대 ${req.count}곳 골라 JSON 으로.');
   return b.toString();
 }
 
@@ -146,13 +183,81 @@ abstract class LlmClient {
   Future<String> complete(String system, String user);
   void dispose();
 
-  Future<RestaurantResult> search(SearchRequest req) async {
-    final content = await complete(_searchSystem(req.count), _searchUser(req));
+  /// 맛집 검색 파이프라인:
+  /// 1) AI 가 네이버 검색어 생성 → 2) 네이버 지역검색으로 실존 후보 수집
+  /// → 3) AI 가 후보 중 선별·정렬·이유 작성.
+  /// [naverSearch] 가 없으면(키 미설정) 예외를 던진다.
+  Future<RestaurantResult> search(
+    SearchRequest req, {
+    required NaverSearchService naverSearch,
+  }) async {
+    // 목표 개수에 맞춰 검색어 수 결정 (검색어당 여러 곳 → 넉넉히).
+    final numQueries = (req.count / 3).ceil().clamp(3, 8);
+
+    // 1) 검색어 생성
+    List<String> queries;
     try {
-      return RestaurantResult.fromJson(_extractJson(content));
+      final qJson = _extractJson(
+          await complete(_querySystem(numQueries), _queryUser(req, numQueries)));
+      queries = ((qJson['queries'] as List?) ?? [])
+          .map((e) => e.toString().trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
     } catch (e) {
-      throw LlmException('AI 결과를 해석하지 못했어요. 다시 시도해주세요.\n($e)');
+      queries = [];
     }
+    // 폴백: AI 검색어 실패 시 기본 검색어.
+    if (queries.isEmpty) {
+      queries = [
+        if (req.cuisines.isEmpty) '${req.location} 맛집',
+        for (final c in req.cuisines) '${req.location} $c 맛집',
+      ];
+      if (queries.isEmpty) queries = ['${req.location} 맛집'];
+    }
+
+    // 2) 네이버 지역검색으로 실존 후보 수집
+    final candidates = await naverSearch.searchMany(queries, displayEach: 20);
+    if (candidates.isEmpty) {
+      throw const LlmException('조건에 맞는 실제 가게를 찾지 못했어요. 지역/조건을 바꿔보세요.');
+    }
+
+    // 3) AI 가 후보 중 선별
+    final Map<String, dynamic> picksJson;
+    try {
+      picksJson = _extractJson(await complete(
+          _selectSystem(req.count), _selectUser(req, candidates)));
+    } catch (e) {
+      throw LlmException('AI 선별 결과를 해석하지 못했어요. 다시 시도해주세요.\n($e)');
+    }
+
+    final picks = (picksJson['picks'] as List?) ?? [];
+    final result = <Restaurant>[];
+    for (final p in picks.whereType<Map>()) {
+      final idx = (p['index'] as num?)?.toInt();
+      if (idx == null || idx < 0 || idx >= candidates.length) continue;
+      final base = candidates[idx];
+      result.add(Restaurant(
+        name: base.name,
+        lat: base.lat,
+        lng: base.lng,
+        menu: (p['menu'] ?? base.menu).toString(),
+        price: (p['price'] ?? '').toString(),
+        reason: (p['reason'] ?? '').toString(),
+      ));
+    }
+
+    // AI 선별이 비면(형식 오류 등) 후보 상위 N곳이라도 반환.
+    if (result.isEmpty) {
+      result.addAll(candidates.take(req.count).map((c) => Restaurant(
+            name: c.name,
+            lat: c.lat,
+            lng: c.lng,
+            menu: c.menu,
+            price: '',
+            reason: c.reason,
+          )));
+    }
+    return RestaurantResult(result);
   }
 
   Future<MenuResult> suggestMenus(MenuRequest req) async {

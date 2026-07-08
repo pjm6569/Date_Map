@@ -53,6 +53,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _save() async {
+    // 네이버 검색 키는 secrets.dart 기본값을 사용하므로 기존 값 유지.
+    final current = AppScope.of(context).settings;
     final settings = AiSettings(
       provider: _provider,
       apiKey: _keyCtrl.text.trim(),
@@ -62,6 +64,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       baseUrl: _baseUrlCtrl.text.trim().isEmpty
           ? _provider.defaultBaseUrl
           : _baseUrlCtrl.text.trim(),
+      naverSearchClientId: current.naverSearchClientId,
+      naverSearchClientSecret: current.naverSearchClientSecret,
     );
     await settings.save();
     if (!mounted) return;

@@ -1,13 +1,42 @@
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
+import '../services/update_service.dart';
 import 'input_screen.dart';
 import 'menu_input_screen.dart';
 import 'settings_screen.dart';
+import 'update_dialog.dart';
 
 /// 홈: 두 가지 모드 선택 (맛집 찾기 / 뭐 먹지?).
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final _updateService = UpdateService();
+
+  @override
+  void initState() {
+    super.initState();
+    // 앱 시작 시 조용히 업데이트 확인.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkUpdate());
+  }
+
+  @override
+  void dispose() {
+    _updateService.dispose();
+    super.dispose();
+  }
+
+  Future<void> _checkUpdate() async {
+    final info = await _updateService.checkForUpdate();
+    if (info == null || !mounted) return;
+    await UpdateDialog.maybeShow(context,
+        info: info, service: _updateService);
+  }
 
   @override
   Widget build(BuildContext context) {

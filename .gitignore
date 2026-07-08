@@ -1,6 +1,15 @@
 # Claude Code local settings
 .claude/settings.local.json
 
+# 실제 키 (secrets.example.dart 만 커밋)
+/lib/secrets.dart
+
+# 서명 키 (절대 커밋 금지 — CI 는 GitHub Secrets 사용)
+*.jks
+*.keystore
+*.base64.txt
+/android/key.properties
+
 # Miscellaneous
 *.class
 *.log

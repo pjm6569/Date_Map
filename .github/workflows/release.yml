@@ -1,0 +1,62 @@
+name: Build & Release APK
+
+# v로 시작하는 태그를 push 하면 실행됨 (예: v0.1.0)
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: # 수동 실행도 허용
+
+permissions:
+  contents: write # 릴리스 생성에 필요
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      # secrets.dart 는 git 에 없으므로 GitHub Secrets 로 생성.
+      - name: Create secrets.dart
+        run: |
+          cat > lib/secrets.dart <<'EOF'
+          class Secrets {
+            static const naverMapClientId = '${{ secrets.NAVER_MAP_CLIENT_ID }}';
+            static const naverSearchClientId = '${{ secrets.NAVER_SEARCH_CLIENT_ID }}';
+            static const naverSearchClientSecret = '${{ secrets.NAVER_SEARCH_CLIENT_SECRET }}';
+            static const defaultAiApiKey = '${{ secrets.DEFAULT_AI_API_KEY }}';
+          }
+          EOF
+
+      # 서명 keystore 복원 (base64 → 파일).
+      - name: Decode keystore
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > date_map-release.jks
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build release APK
+        env:
+          SIGNING_STORE_FILE: ${{ github.workspace }}/date_map-release.jks
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: flutter build apk --release
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/app/outputs/flutter-apk/app-release.apk
+          generate_release_notes: true

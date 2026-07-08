@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../app_state.dart';
 import '../services/llm_service.dart';
+import '../services/naver_search_service.dart';
+import 'budget_picker.dart';
 import 'count_picker.dart';
 import 'llm_runner.dart';
 import 'result_screen.dart';
@@ -20,9 +23,9 @@ class _InputScreenState extends State<InputScreen> {
   final _locationCtrl = TextEditingController();
   final _extraCtrl = TextEditingController();
 
-  // 예산 슬라이더: 0원 ~ 10만원, 천원 단위.
-  static const _budgetMax = 100000.0;
-  RangeValues _budget = const RangeValues(10000, 50000);
+  // 예산: 숫자 직접 입력 (기본 1~3만원).
+  int _minBudget = 10000;
+  int _maxBudget = 30000;
 
   static const _moods = ['감성적인', '트렌디한', '조용한', '활기찬', '고급스러운', '캐주얼한'];
   static const _cuisines = ['한식', '양식', '일식', '중식', '아시안', '분식', '고기', '해산물'];
@@ -56,36 +59,54 @@ class _InputScreenState extends State<InputScreen> {
       );
       return;
     }
+    // 네이버 지역검색 키 확인 (실존 가게 검색에 필수).
+    final settings = AppScope.of(context).settings;
+    if (!settings.hasNaverSearch) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('AI 설정에서 네이버 검색 API 키를 먼저 입력해주세요.'),
+          duration: Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+
     final req = SearchRequest(
       location: location,
-      minBudget: _budget.start.round(),
-      maxBudget: _budget.end.round(),
+      minBudget: _minBudget,
+      maxBudget: _maxBudget,
       moods: _selectedMoods.toList(),
       cuisines: _selectedCuisines.toList(),
       count: _count,
       extraPrompt: _extraCtrl.text,
     );
 
+    final naverSearch = NaverSearchService(
+      clientId: settings.naverSearchClientId,
+      clientSecret: settings.naverSearchClientSecret,
+    );
+
     final result = await runLlm<dynamic>(
       context,
       loadingMessage: '조건에 맞는 맛집을 찾고 있어요...',
-      task: (client) => client.search(req),
+      task: (client) => client.search(req, naverSearch: naverSearch),
     );
+    naverSearch.dispose();
     if (result == null || !mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => ResultScreen(result: result)),
     );
   }
 
-  String _won(double v) {
-    final total = v.round();
-    if (total >= _budgetMax) return '10만원+';
+  String _won(int total) {
     if (total == 0) return '0원';
     final man = total ~/ 10000;
     final cheon = (total % 10000) ~/ 1000;
+    final rest = total % 1000;
     final parts = <String>[
       if (man > 0) '$man만',
       if (cheon > 0) '$cheon천',
+      if (rest > 0) '$rest',
     ];
     return '${parts.join(' ')}원';
   }
@@ -115,18 +136,19 @@ class _InputScreenState extends State<InputScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 _label('1인 예산'),
-                Text('${_won(_budget.start)} ~ ${_won(_budget.end)}',
+                Text('${_won(_minBudget)} ~ ${_won(_maxBudget)}',
                     style: const TextStyle(
                         fontWeight: FontWeight.bold, color: Colors.redAccent)),
               ],
             ),
-            RangeSlider(
-              values: _budget,
-              min: 0,
-              max: _budgetMax,
-              divisions: 100,
-              labels: RangeLabels(_won(_budget.start), _won(_budget.end)),
-              onChanged: (v) => setState(() => _budget = v),
+            const SizedBox(height: 8),
+            BudgetPicker(
+              min: _minBudget,
+              max: _maxBudget,
+              onChanged: (lo, hi) => setState(() {
+                _minBudget = lo;
+                _maxBudget = hi;
+              }),
             ),
             const SizedBox(height: 16),
             _label('분위기  (선택 안 해도 돼요)'),
