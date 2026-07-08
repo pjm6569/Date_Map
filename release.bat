@@ -5,7 +5,10 @@ REM   release.bat          -> patch 올림 (0.2.0 -> 0.2.1)
 REM   release.bat minor    -> minor 올림
 REM   release.bat major    -> major 올림
 REM   release.bat 0.5.2    -> 특정 버전 지정
+REM   release.bat -m "메시지"        -> 변경사항을 해당 메시지로 먼저 커밋
+REM   release.bat minor -m "메시지"  -> 버전 올리며 변경사항 커밋 메시지 지정
 REM 더블클릭해도 되고, 터미널에서 실행해도 됩니다.
+REM (더블클릭 시 -m 없으면 커밋 메시지를 물어봅니다.)
 
 setlocal
 

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -8,6 +9,11 @@ import 'package:webview_flutter/webview_flutter.dart';
 final Set<Factory<OneSequenceGestureRecognizer>> _webviewGestures = {
   Factory<OneSequenceGestureRecognizer>(() => EagerGestureRecognizer()),
 };
+
+/// intent:// 스킴을 네이티브에서 Intent.parseUri 로 파싱해 외부 앱을 여는 채널.
+/// url_launcher 는 intent:// 를 처리하지 못해 별도 채널이 필요하다.
+const MethodChannel _externalIntentChannel =
+    MethodChannel('date_map/external_intent');
 
 /// 네이버 장소 검색 모바일 URL (별점/메뉴/리뷰가 나오는 페이지).
 String naverPlaceUrl(String query) =>
@@ -17,13 +23,20 @@ String naverPlaceUrl(String query) =>
 /// http/https 는 웹뷰가 그대로 로드하고, 그 외(nmap://, intent://, market:// 등)는
 /// 외부 앱으로 실행 후 웹뷰 이동을 막아 에러 페이지가 뜨지 않게 한다.
 NavigationDecision _handleNavigation(NavigationRequest request) {
-  final uri = Uri.tryParse(request.url);
+  final url = request.url;
+  final uri = Uri.tryParse(url);
   final scheme = uri?.scheme.toLowerCase();
   if (scheme == 'http' || scheme == 'https') {
     return NavigationDecision.navigate;
   }
-  if (uri != null) {
-    // 외부 앱으로 열기 (실패해도 웹뷰 에러 페이지는 피한다).
+  // intent:// 및 nmap:// 등 커스텀 스킴은 네이티브 Intent.parseUri 로 실행.
+  // (url_launcher 는 intent:// 를 파싱하지 못해 아무 동작도 하지 않는다.)
+  if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.android)) {
+    _externalIntentChannel
+        .invokeMethod<bool>('launchIntentUrl', {'url': url})
+        .catchError((_) => false);
+  } else if (uri != null) {
+    // 그 외 플랫폼(iOS 등)은 url_launcher 로 시도.
     launchUrl(uri, mode: LaunchMode.externalApplication)
         .catchError((_) => false);
   }

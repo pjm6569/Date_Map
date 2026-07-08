@@ -61,5 +61,7 @@
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="market"/>
         </intent>
+        <!-- Intent.parseUri 로 변환된 네이버 지도 앱 패키지를 조회/실행할 수 있도록 -->
+        <package android:name="com.nhn.android.nmap"/>
     </queries>
 </manifest>
